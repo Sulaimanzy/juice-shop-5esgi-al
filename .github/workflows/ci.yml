@@ -18,6 +18,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - run: node --version
       - run: npm ci
       - run: npm run build
 
@@ -29,5 +30,6 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - run: node --version
       - run: npm ci
       - run: npm run lint
