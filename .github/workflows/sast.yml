@@ -41,7 +41,32 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: gitleaks/gitleaks-action@v3
+      - name: Gitleaks - historique complet
+        id: gitleaks-history
+        continue-on-error: true
+        run: |
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 \
+            git --report-format sarif --report-path /repo/gitleaks-history.sarif \
+              --exit-code 1 --redact /repo
+
+      - name: Gitleaks - controle du push
+        id: gitleaks-diff
+        continue-on-error: true
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "true"
+
+      - name: Publier le rapport gitleaks historique
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-full-history-sarif
+          path: gitleaks-history.sarif
+          if-no-files-found: error
+
+      - name: Seuil de blocage des secrets
+        if: steps.gitleaks-history.outcome == 'failure' || steps.gitleaks-diff.outcome == 'failure'
+        run: |
+          echo "::error::Gitleaks a remonte des secrets bloquants"
+          exit 1
