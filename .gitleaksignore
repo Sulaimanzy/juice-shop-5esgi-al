@@ -1,0 +1,2 @@
+# 2026-09-10 : credential de test du challenge oauthUserPasswordChallenge, pas un secret de production.
+7a9307dc766882edee1b0d3362d1caac2cb0794c:routes/login.ts:generic-api-key:64
