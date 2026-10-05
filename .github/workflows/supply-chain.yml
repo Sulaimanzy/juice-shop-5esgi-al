@@ -72,6 +72,8 @@ jobs:
           format: sarif
           output: trivy-image.sarif
           exit-code: "1"
+          # sans ce reglage, trivy-action ignore "severity" pour le SARIF et publie tout (LOW, MEDIUM compris)
+          limit-severities-for-sarif: true
       - name: Upload SARIF vers l'onglet Security
         if: always() && hashFiles('trivy-image.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
