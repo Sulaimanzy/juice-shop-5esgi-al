@@ -1,0 +1,53 @@
+# Dockerfile.hardened - version durcie de Dockerfile.ci (TP4).
+#
+# Choix de la base finale, mesure locale Trivy 0.74.0 (--scanners vuln), 2026-10-05 :
+#   image                                  findings  CRITICAL  HIGH
+#   node:24                                    4500        32   487
+#   node:24-slim                                256         4    61
+#   gcr.io/distroless/nodejs24-debian13          31         0     0
+# Sur node:24, 4480 findings sur 4500 viennent de la couche systeme debian :
+# c'est le FROM qui pilote le chiffre. Distroless n'a ni shell, ni apt, ni npm.
+#
+# Resultat sur l'image construite avec ce fichier (juice-shop:hardened) :
+#   couche debian   : 31 findings, 0 CRITICAL, 0 HIGH  -> regle par le FROM
+#   couche node-pkg : 98 findings, 9 CRITICAL, 48 HIGH -> dependances de package.json,
+#                     hors de portee du Dockerfile : traitees par politique-maj.md
+# Verifie : tourne en uid 65532, aucun shell (docker exec sh echoue), aucun secret
+# dans docker history, application joignable sur le port 3000.
+
+# ---------- Etape 1 : installation et compilation ----------
+# Image complete : elle a la chaine de compilation (python, make, g++) pour les
+# modules natifs comme sqlite3. Elle ne part jamais en production.
+FROM node:24 AS installer
+WORKDIR /juice-shop
+COPY . /juice-shop
+# npm ci : installe exactement le package-lock.json committe (celui qu'on scanne en CI).
+# Les devDependencies sont necessaires ici : le postinstall compile le frontend Angular
+# (vitest, typescript...) et le serveur (tsc). "--omit=dev" a ce stade casserait ce build.
+RUN npm ci
+# Puis on les retire : seules les dependances de production passent dans l'image finale.
+RUN npm prune --omit=dev
+# Rien de ce qui suit n'est utile a l'execution : on ne le copie pas dans l'image finale
+RUN rm -rf frontend/node_modules frontend/.angular frontend/src/assets
+# Repertoires ou l'application ecrit : proprietaire 65532, groupe 0 avec les memes droits
+# (compatible avec les plateformes qui imposent un uid arbitraire dans le groupe 0)
+RUN mkdir logs \
+ && chown -R 65532 logs \
+ && chgrp -R 0 ftp/ frontend/dist/ logs/ data/ i18n/ \
+ && chmod -R g=u ftp/ frontend/dist/ logs/ data/ i18n/
+RUN rm ftp/legal.md || true
+RUN rm i18n/*.json || true
+
+# ---------- Etape 2 : runtime seul ----------
+# Uniquement le runtime Node.js : pas de shell, pas de gestionnaire de paquets, pas de npm.
+FROM gcr.io/distroless/nodejs24-debian13
+WORKDIR /juice-shop
+COPY --from=installer --chown=65532:0 /juice-shop .
+# uid numerique : l'utilisateur "node" existe dans node:24 mais pas dans distroless.
+# 65532 est l'utilisateur "nonroot" prevu par distroless.
+USER 65532
+EXPOSE 3000
+# Aucun secret dans ENV ou ARG : un layer est immuable et lisible par docker history.
+# Les secrets sont injectes au demarrage par l'orchestrateur (docker run -e, secret Kubernetes...).
+# L'entrypoint de distroless est deja node : on ne passe que le script.
+CMD ["/juice-shop/build/app.js"]
