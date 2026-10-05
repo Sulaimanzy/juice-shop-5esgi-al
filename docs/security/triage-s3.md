@@ -14,3 +14,11 @@ Les verdicts ci-dessous ont été établis après lecture des lignes signalées 
 - Les trois vrais positifs à corriger feront l'objet d'un ticket ou d'un finding d'audit en S5/S8.
 - L'exclusion gitleaks est limitée au credential pédagogique de `routes/login.ts:64` et ne masque pas la clé RSA détectée dans `lib/insecurity.ts:21` ; le job reste donc rouge comme demandé.
 - Date du triage : 2026-09-10.
+
+## Complément séance 4 (2026-10-05)
+
+| Fichier:ligne | Règle | CWE | Sévérité | Vrai ou faux positif | Action décidée |
+|---|---|---|---|---|---|
+| `Dockerfile.ci:6` (commit `2fd9556`) | `generic-api-key` (gitleaks, scan de l'historique complet) | CWE-798 | Error | **Vrai positif volontaire** : `ENV JWT_SECRET=...` grave le secret dans un layer de l'image, lisible par `docker history` et `trivy image`. Le Dockerfile est volontairement dégradé, c'est le support du TP4. | **Pas d'exclusion**, le job reste rouge comme le demande le TP4. Le secret disparaît avec `Dockerfile.hardened`, qui ne contient aucun `ENV` ni `ARG` sensible : le secret est injecté au démarrage par l'orchestrateur. Le secret est considéré comme compromis puisqu'il est dans l'historique public : il ne doit être réutilisé nulle part. |
+
+- Sur le push du merge de la PR #2, le step `gitleaks-action` (contrôle du push) affiche « No leaks detected » : il ignore les commits de fusion et n'a donc rien scanné. Seul le step « historique complet » (`fetch-depth: 0`) a attrapé ce secret. Cela justifie de garder les deux steps.
